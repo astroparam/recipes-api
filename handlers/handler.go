@@ -137,6 +137,7 @@ func (handler *RecipesHandler) DeleteRecipeHandler(c *gin.Context) {
 
 func (handler *RecipesHandler) GetOneRecipeHandler(c *gin.Context) {
 	id := c.Param("id")
+	log.Printf("GetOneRecipes was request to give recipe with id: %v\n", id)
 	objectId, _ := primitive.ObjectIDFromHex(id)
 	cur := handler.collection.FindOne(handler.ctx, bson.M{
 		"_id": objectId,

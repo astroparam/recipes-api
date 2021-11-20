@@ -11,4 +11,5 @@ require (
 	github.com/onsi/gomega v1.16.0 // indirect
 	github.com/rs/xid v1.3.0
 	go.mongodb.org/mongo-driver v1.7.3
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 )

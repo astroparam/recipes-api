@@ -49,6 +49,7 @@ func main() {
 	router.Use(sessions.Sessions("recipes_api", store))
 
 	router.GET("/recipes", recipesHandler.ListRecipesHandler)
+	router.GET("/recipes/:id", recipesHandler.GetOneRecipeHandler)
 	router.POST("/signup", authHandler.SignUpHandler)
 	router.POST("/signin", authHandler.SignInHandler)
 	router.POST("/signout", authHandler.SignOutHandler)

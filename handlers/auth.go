@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
 	"net/http"
 	"time"
 
@@ -12,7 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/xid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
@@ -38,19 +39,27 @@ func NewAuthHandler(ctx context.Context, collection *mongo.Collection) *AuthHand
 }
 
 func (handler *AuthHandler) SignInHandler(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+
+	var reqUser models.User
+	if err := c.ShouldBindJSON(&reqUser); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	h := sha256.New()
-
 	cur := handler.collection.FindOne(handler.ctx, bson.M{
-		"username": user.Username,
-		"password": string(h.Sum([]byte(user.Password))),
+		"username": reqUser.Username,
 	})
-	if cur.Err() != nil {
+
+	var user models.User
+	err = cur.Decode(&user)
+	if err != nil {
+		// Invalid Username
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	if !comparePassword(user.Password, reqUser.Password) {
+		// Invalid Password
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	}
@@ -65,6 +74,7 @@ func (handler *AuthHandler) SignInHandler(c *gin.Context) {
 }
 
 func (handler *AuthHandler) SignUpHandler(c *gin.Context) {
+
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -73,7 +83,14 @@ func (handler *AuthHandler) SignUpHandler(c *gin.Context) {
 
 	cur := handler.collection.FindOne(handler.ctx, bson.M{"username": user.Username})
 	if cur.Err() == mongo.ErrNoDocuments {
-		_, err := handler.collection.InsertOne(handler.ctx, user)
+
+		user.ID = primitive.NewObjectID()
+		hashedPassword, err := hashPassword(user.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		}
+		user.Password = hashedPassword
+		_, err = handler.collection.InsertOne(handler.ctx, user)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -81,6 +98,7 @@ func (handler *AuthHandler) SignUpHandler(c *gin.Context) {
 		c.JSON(http.StatusAccepted, gin.H{"message": "Account has been created"})
 		return
 	}
+
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Username already taken"})
 }
 
@@ -120,4 +138,16 @@ func (handler *AuthHandler) SignOutHandler(c *gin.Context) {
 	session.Clear()
 	session.Save()
 	c.JSON(http.StatusOK, gin.H{"message": "Signed out..."})
+}
+
+func hashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(hashedPassword), err
+}
+
+func comparePassword(userPass, reqUserPass string) bool {
+	if err := bcrypt.CompareHashAndPassword([]byte(userPass), []byte(reqUserPass)); err != nil {
+		return false
+	}
+	return true
 }
